@@ -11,7 +11,6 @@ const SUPABASE_KEY = 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdX
 
 let isWhatsAppConnected = false; 
 let isUploading = false;         
-let sock;                        
 
 // دالة لسحب ملف الجلسة وفك ضغطه عند بداية التشغيل
 async function downloadSession() {
@@ -56,11 +55,7 @@ async function uploadSession() {
 async function startWhatsApp() {
     await downloadSession();
     const { state, saveCreds } = await useMultiFileAuthState(path.join(__dirname, 'auth_info'));
-    
-    sock = makeWASocket({
-        auth: state,
-        printQRInTerminal: false 
-    });
+    const sock = makeWASocket({ auth: state, printQRInTerminal: false });
 
     sock.ev.on('connection.update', async (update) => {
         const { connection, lastDisconnect, qr } = update;
@@ -80,24 +75,9 @@ async function startWhatsApp() {
         if (isWhatsAppConnected) await uploadSession(); 
     });
 
-    // دالة تحويل الكائنات لنصوص لمنع مشاكل الـ Circular Structures
-    function stringifyAll(obj) {
-        const seen = new WeakSet();
-        return JSON.stringify(obj, function (key, value) {
-            if (typeof value === "bigint") return value.toString();
-            if (typeof value === "function") return "[Function]";
-            if (typeof value === "undefined") return "[Undefined]";
-            if (typeof value === "object" && value !== null) {
-                if (seen.has(value)) return "[Circular]";
-                seen.add(value);
-            }
-            return value;
-        }, 2);
-    }
-
-    // حدث استقبال الرسائل المطور والمؤمن صريحاً 🎯
+    // 🎯 حدث الاستقبال اللي بيقص المصفوفة الكبيرة ويشكل الـ JSON المطلوب بالظبط
     sock.ev.on("messages.upsert", async ({ messages, type }) => {
-        const msg = messages[0];
+        const msg = messages[0]; // التقاط أول كائن داخل المصفوفة الكبيرة
         
         if (msg && !msg.key.fromMe && type === 'notify') {
             const isGroup = msg.key.remoteJid ? msg.key.remoteJid.endsWith('@g.us') : false;
@@ -105,24 +85,25 @@ async function startWhatsApp() {
 
             if (!isGroup && messageText) {
                 
-                // 🧠 الحركة السحرية: سحب الرقم الحقيقي من remoteJidAlt فوراً، ولو مش موجود نرجع لـ remoteJid
+                // 🧠 قص واستبدال رقم الراسل: لو الـ remoteJidAlt متاح وفيه الرقم الحقيقي بنمسكه فوراً، وإلا بنرجع للأصل
                 let rawJid = msg.key.remoteJidAlt && msg.key.remoteJidAlt !== "[Undefined]" ? msg.key.remoteJidAlt : msg.key.remoteJid;
                 let realNumber = rawJid.split('@')[0];
 
-                // تجهيز الـ Payload النظيف المتوافق مع الـ Web Forms بالملي
+                // 🛠️ قص وتشكيل القالب المطلوب بالملي وعمل الـ Mapping
                 const payload = {
                     messageId: msg.key.id,
-                    senderNumber: realNumber, // هنا هيتبعت الـ 201006956328 الصريح والنظيف لأي مستخدم 🚀
+                    senderNumber: realNumber, // تم استبدال الـ LID بالرقم الحقيقي بنجاح هنا (مثال: 201006956328)
                     senderName: msg.pushName || 'عميل مزاد إكس',
                     messageBody: messageText,
                     timestamp: msg.messageTimestamp
                 };
 
+                // إرسال كائن الـ JSON النظيف المقصوص مباشرة
                 try {
                     await axios.post(MAZADX_WEBHOOK_URL, payload);
-                    console.log(`[نجاح] تم تمرير الرسالة بنجاح من رقم العميل الفعلي: ${payload.senderNumber}`);
+                    console.log(`[تم القص والتمرير] بنجاح للرسالة: ${payload.messageId} من الرقم: ${payload.senderNumber}`);
                 } catch (error) {
-                    console.error('خطأ أثناء تمرير الرسالة لـ الـ Web Forms:', error.message);
+                    console.error('خطأ أثناء تمرير الـ JSON لـ الـ Web Forms:', error.message);
                 }
             }
         }
