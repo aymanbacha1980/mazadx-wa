@@ -122,4 +122,9 @@ sock.ev.on("messages.upsert", async ({ messages, type }) => {
 
 });
 
+} // <-- إغلاق startWhatsApp
+
+startWhatsApp();
+
+
 startWhatsApp();
