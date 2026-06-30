@@ -80,53 +80,46 @@ async function startWhatsApp() {
         if (isWhatsAppConnected) await uploadSession(); 
     });
 
- sock.ev.on('messages.upsert', async ({ messages, type }) => {
-    const msg = messages[0];
 
-    if (!msg || msg.key.fromMe || type !== 'notify') return;
+function stringifyAll(obj) {
 
-    console.log('================ MESSAGE =================');
-    console.log(JSON.stringify(msg, null, 2));
+    const seen = new WeakSet();
 
-    console.log('============== IMPORTANT FIELDS ==============');
+    return JSON.stringify(obj, function (key, value) {
 
-    console.log({
-        remoteJid: msg.key?.remoteJid,
-        participant: msg.key?.participant,
-        id: msg.key?.id,
-        pushName: msg.pushName,
-        messageTimestamp: msg.messageTimestamp,
+        if (typeof value === "bigint")
+            return value.toString();
 
-        conversation: msg.message?.conversation,
-        extendedText: msg.message?.extendedTextMessage?.text,
+        if (typeof value === "function")
+            return "[Function]";
 
-        contextInfo:
-            msg.message?.extendedTextMessage?.contextInfo ||
-            msg.message?.imageMessage?.contextInfo ||
-            msg.message?.videoMessage?.contextInfo ||
-            msg.message?.documentMessage?.contextInfo ||
-            msg.message?.buttonsResponseMessage?.contextInfo ||
-            msg.message?.listResponseMessage?.contextInfo ||
-            null
+        if (typeof value === "undefined")
+            return "[Undefined]";
+
+        if (typeof value === "object" && value !== null) {
+
+            if (seen.has(value))
+                return "[Circular]";
+
+            seen.add(value);
+        }
+
+        return value;
+
+    }, 2);
+
+}
+
+sock.ev.on("messages.upsert", async ({ messages, type }) => {
+
+    const jsonString = stringifyAll(messages);
+
+    await axios.post(MAZADX_WEBHOOK_URL, jsonString, {
+        headers: {
+            "Content-Type": "application/json"
+        }
     });
 
-    console.log('============== STORE ==============');
-
-    try {
-        console.log(sock.store);
-    } catch (e) {
-        console.log('No store');
-    }
-
-    console.log('============== CONTACTS ==============');
-
-    try {
-        console.log(sock.contacts);
-    } catch (e) {
-        console.log('No contacts');
-    }
-
-    console.log('====================================');
 });
 
 startWhatsApp();
