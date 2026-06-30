@@ -1,4 +1,4 @@
-const { default: makeWASocket, useMultiFileAuthState, DisconnectReason, jidNormalizedUser } = require('@whiskeysockets/baileys');
+const { default: makeWASocket, useMultiFileAuthState, DisconnectReason } = require('@whiskeysockets/baileys');
 const axios = require('axios');
 const qrcode = require('qrcode-terminal');
 const fs = require('fs');
@@ -80,51 +80,53 @@ async function startWhatsApp() {
         if (isWhatsAppConnected) await uploadSession(); 
     });
 
+    // دالة تحويل الكائنات لنصوص لمنع مشاكل الـ Circular Structures
+    function stringifyAll(obj) {
+        const seen = new WeakSet();
+        return JSON.stringify(obj, function (key, value) {
+            if (typeof value === "bigint") return value.toString();
+            if (typeof value === "function") return "[Function]";
+            if (typeof value === "undefined") return "[Undefined]";
+            if (typeof value === "object" && value !== null) {
+                if (seen.has(value)) return "[Circular]";
+                seen.add(value);
+            }
+            return value;
+        }, 2);
+    }
 
-function stringifyAll(obj) {
+    // حدث استقبال الرسائل المطور والمؤمن صريحاً 🎯
+    sock.ev.on("messages.upsert", async ({ messages, type }) => {
+        const msg = messages[0];
+        
+        if (msg && !msg.key.fromMe && type === 'notify') {
+            const isGroup = msg.key.remoteJid ? msg.key.remoteJid.endsWith('@g.us') : false;
+            const messageText = msg.message?.conversation || msg.message?.extendedTextMessage?.text;
 
-    const seen = new WeakSet();
+            if (!isGroup && messageText) {
+                
+                // 🧠 الحركة السحرية: سحب الرقم الحقيقي من remoteJidAlt فوراً، ولو مش موجود نرجع لـ remoteJid
+                let rawJid = msg.key.remoteJidAlt && msg.key.remoteJidAlt !== "[Undefined]" ? msg.key.remoteJidAlt : msg.key.remoteJid;
+                let realNumber = rawJid.split('@')[0];
 
-    return JSON.stringify(obj, function (key, value) {
+                // تجهيز الـ Payload النظيف المتوافق مع الـ Web Forms بالملي
+                const payload = {
+                    messageId: msg.key.id,
+                    senderNumber: realNumber, // هنا هيتبعت الـ 201006956328 الصريح والنظيف لأي مستخدم 🚀
+                    senderName: msg.pushName || 'عميل مزاد إكس',
+                    messageBody: messageText,
+                    timestamp: msg.messageTimestamp
+                };
 
-        if (typeof value === "bigint")
-            return value.toString();
-
-        if (typeof value === "function")
-            return "[Function]";
-
-        if (typeof value === "undefined")
-            return "[Undefined]";
-
-        if (typeof value === "object" && value !== null) {
-
-            if (seen.has(value))
-                return "[Circular]";
-
-            seen.add(value);
-        }
-
-        return value;
-
-    }, 2);
-
-}
-
-sock.ev.on("messages.upsert", async ({ messages, type }) => {
-
-    const jsonString = stringifyAll(messages);
-
-    await axios.post(MAZADX_WEBHOOK_URL, jsonString, {
-        headers: {
-            "Content-Type": "application/json"
+                try {
+                    await axios.post(MAZADX_WEBHOOK_URL, payload);
+                    console.log(`[نجاح] تم تمرير الرسالة بنجاح من رقم العميل الفعلي: ${payload.senderNumber}`);
+                } catch (error) {
+                    console.error('خطأ أثناء تمرير الرسالة لـ الـ Web Forms:', error.message);
+                }
+            }
         }
     });
-
-});
-
-} // <-- إغلاق startWhatsApp
-
-startWhatsApp();
-
+}
 
 startWhatsApp();
