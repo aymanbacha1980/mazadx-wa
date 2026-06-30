@@ -51,7 +51,7 @@ async function uploadSession() {
             zip.writeZip('auth_info.zip');
             const fileData = fs.readFileSync('auth_info.zip');
             
-            await axios.post(STORAGE_URL, fileData, {
+            await axios.put(STORAGE_URL, fileData, {
                 headers: { 
                     'Authorization': SUPABASE_KEY, 
                     'Content-Type': 'application/zip', 
