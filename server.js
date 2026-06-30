@@ -9,7 +9,8 @@ const MAZADX_WEBHOOK_URL = 'https://mazadx.com/WhatsappWebhook.ashx';
 const STORAGE_URL = 'https://dbbqpjglpqthxvkxhyrh.supabase.co/storage/v1/object/backups/auth_info.zip';
 const SUPABASE_KEY = 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRiYnFwamdscHF0aHh2a3hoeXJoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI4MDc1MjEsImV4cCI6MjA5ODM4MzUyMX0.9MuIHlYrZ0gTyEUGcoaIU9wupNZbmKtiaA55-_3Jq74';
 
-let isWhatsAppConnected = false; // متغير لمنع الرفع العشوائي قبل الاتصال الحقيقي
+let isWhatsAppConnected = false; // المتغير الأساسي لتحديد حالة الاتصال بالواتساب
+let isUploading = false;         // قفل الأمان (Mutex Lock) لمنع التكرار وازدحام الطلبات
 
 // دالة لسحب ملف الجلسة وفك ضغطه عند بداية التشغيل
 async function downloadSession() {
@@ -34,14 +35,11 @@ async function downloadSession() {
 }
 
 // دالة لضغط مجلد الجلسة ورفعه
-let isWhatsAppConnected = false;
-let isUploading = false; // "قفل" جديد لمنع التكرار
-
 async function uploadSession() {
-    // لو فيه رفع شغال دلوقتي، اخرج فوراً
+    // لو مفيش اتصال حقيقي أو فيه عملية رفع شغال دلوقتي، اخرج فوراً
     if (!isWhatsAppConnected || isUploading) return;
     
-    isUploading = true; // اقفل القفل
+    isUploading = true; // اقفل القفل لحماية السيرفر من الـ Concurrency (حالة الـ 400 والـ 504)
     try {
         console.log('🔄 جاري حفظ وتحديث الجلسة النشطة في مخزن Supabase...');
         const AdmZip = require('adm-zip');
@@ -64,9 +62,9 @@ async function uploadSession() {
             console.log('✅ تم تحديث المخزن الخارجي بنجاح تام.');
         }
     } catch (err) {
-        console.error('❌ فشل في تحديث ملف الجلسة:', err.message);
+        console.error('❌ فشل في تحديث ملف الجلسة خارجياً:', err.message);
     } finally {
-        isUploading = false; // افتح القفل لما تخلص
+        isUploading = false; // افتح القفل فور الانتهاء للسماح بالرفع القادم
     }
 }
 
@@ -96,14 +94,14 @@ async function startWhatsApp() {
             }
         } else if (connection === 'open') {
             console.log('🔥 خط الدفاع الثاني لمزاد إكس يعمل الآن بأعلى كفاءة وسرعة!');
-            isWhatsAppConnected = true; // تفعيل إذن الرفع الآن فقط
+            isWhatsAppConnected = true; // تفعيل إذن الرفع الآن فقط بعد استقرار الاتصال
             await uploadSession(); 
         }
     });
 
     sock.ev.on('creds.update', async () => {
         await saveCreds();
-        if (isWhatsAppConnected) { // الرفع عند تحديث الـ Tokens فقط لو كنا متصلين
+        if (isWhatsAppConnected) { // الرفع عند تحديث الـ Tokens فقط لو كنا متصلين فعلياً
             await uploadSession(); 
         }
     });
@@ -134,4 +132,5 @@ async function startWhatsApp() {
     });
 }
 
+// انطلاق خادم الواتساب
 startWhatsApp();
