@@ -34,12 +34,16 @@ async function downloadSession() {
 }
 
 // دالة لضغط مجلد الجلسة ورفعه
-async function uploadSession() {
-    // حماية: لا ترفع أبداً للمخزن الخارجي إلا لو الواتساب متصل ومسجل دخول فعلياً
-    if (!isWhatsAppConnected) return;
+let isWhatsAppConnected = false;
+let isUploading = false; // "قفل" جديد لمنع التكرار
 
+async function uploadSession() {
+    // لو فيه رفع شغال دلوقتي، اخرج فوراً
+    if (!isWhatsAppConnected || isUploading) return;
+    
+    isUploading = true; // اقفل القفل
     try {
-        console.log('جاري حفظ وتحديث الجلسة النشطة في مخزن Supabase...');
+        console.log('🔄 جاري حفظ وتحديث الجلسة النشطة في مخزن Supabase...');
         const AdmZip = require('adm-zip');
         const zip = new AdmZip();
         
@@ -47,7 +51,6 @@ async function uploadSession() {
         if (fs.existsSync(folderPath)) {
             zip.addLocalFolder(folderPath);
             zip.writeZip('auth_info.zip');
-
             const fileData = fs.readFileSync('auth_info.zip');
             
             await axios.post(STORAGE_URL, fileData, {
@@ -58,10 +61,12 @@ async function uploadSession() {
                 }
             });
             fs.unlinkSync('auth_info.zip');
-            console.log('تم تحديث المخزن الخارجي بنجاح تام.');
+            console.log('✅ تم تحديث المخزن الخارجي بنجاح تام.');
         }
     } catch (err) {
-        console.error('فشل في تحديث ملف الجلسة خارجياً:', err.message);
+        console.error('❌ فشل في تحديث ملف الجلسة:', err.message);
+    } finally {
+        isUploading = false; // افتح القفل لما تخلص
     }
 }
 
