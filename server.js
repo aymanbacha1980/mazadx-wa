@@ -1,16 +1,17 @@
-const { default: makeWASocket, useMultiFileAuthState, DisconnectReason } = require('@whiskeysockets/baileys');
+const { default: makeWASocket, useMultiFileAuthState, DisconnectReason, jidNormalizedUser } = require('@whiskeysockets/baileys');
 const axios = require('axios');
 const qrcode = require('qrcode-terminal');
 const fs = require('fs');
 const path = require('path');
 
-// 1. الإعدادات الخاصة بمنصة مزاد إكس والـ Supabase رابط الـ ngrok الموجه لصفحة الـ aspx الحالية
+// 1. الإعدادات الخاصة بمنصة مزاد إكس والـ Supabase
 const MAZADX_WEBHOOK_URL = 'https://rug-previous-mullets.ngrok-free.dev/ReceiveWhatsappWebhook.aspx'; 
 const STORAGE_URL = 'https://dbbqpjglpqthxvkxhyrh.supabase.co/storage/v1/object/backups/auth_info.zip';
 const SUPABASE_KEY = 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRiYnFwamdscHF0aHh2a3hoeXJoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI4MDc1MjEsImV4cCI6MjA5ODM4MzUyMX0.9MuIHlYrZ0gTyEUGcoaIU9wupNZbmKtiaA55-_3Jq74';
 
-let isWhatsAppConnected = false; // المتغير الأساسي لتحديد حالة الاتصال بالواتساب
-let isUploading = false;         // قفل الأمان لمنع التكرار وازدحام الطلبات
+let isWhatsAppConnected = false; 
+let isUploading = false;         
+let sock; // جعل متغير الـ socket عاماً للوصول إليه من أي مكان
 
 // دالة لسحب ملف الجلسة وفك ضغطه عند بداية التشغيل
 async function downloadSession() {
@@ -50,7 +51,6 @@ async function uploadSession() {
             zip.writeZip('auth_info.zip');
             const fileData = fs.readFileSync('auth_info.zip');
             
-            // استخدام PUT لتجاوز الـ Error 400 تماماً
             await axios.put(STORAGE_URL, fileData, {
                 headers: { 
                     'Authorization': SUPABASE_KEY, 
@@ -72,7 +72,7 @@ async function startWhatsApp() {
     await downloadSession();
 
     const { state, saveCreds } = await useMultiFileAuthState(path.join(__dirname, 'auth_info'));
-    const sock = makeWASocket({
+    sock = makeWASocket({
         auth: state,
         printQRInTerminal: false 
     });
@@ -113,18 +113,26 @@ async function startWhatsApp() {
             const messageText = msg.message?.conversation || msg.message?.extendedTextMessage?.text;
 
             if (!isGroup && messageText) {
-                // 🛠️ تريكة استخراج رقم الموبايل الحقيقي وتجنب الـ LID تماماً
-                let realNumber = (msg.key.participant || msg.participant || msg.key.remoteJid || '').split(':')[0].split('@')[0];
-                
-                // فحص إضافي في حالة وجود إشارات أو بيانات سياقية تحتوي على الرقم الأصلي الصريح
-                if (msg.message?.extendedTextMessage?.contextInfo?.mentionedJid?.length > 0) {
-                    realNumber = msg.message.extendedTextMessage.contextInfo.mentionedJid[0].split('@')[0];
+                // المعرّف الافتراضي القادم من الرسالة
+                let rawJid = msg.key.remoteJid;
+                let realNumber = rawJid.split('@')[0];
+
+                try {
+                    // 🧠 الحل السحري: إذا كان المعرف عبارة عن LID (يبدأ بـ 86 أو طويل)، نطلب من سيرفر الواتساب استخراج الحساب الحقيقي المتصل به
+                    if (rawJid.includes('@lid') || realNumber.startsWith('86')) {
+                        const result = await sock.onWhatsApp(rawJid);
+                        if (result && result.length > 0) {
+                            // استخراج رقم الموبايل الفعلي (الـ JID الحقيقي المتصل بالـ LID)
+                            realNumber = result[0].jid.split('@')[0];
+                        }
+                    }
+                } catch (err) {
+                    console.error('تنبيه أثناء فك معرّف الرقم الحقيقي:', err.message);
                 }
 
-                // الحفاظ على مسمى senderNumber ليتطابق بالملي مع استقبال صفحة الـ Web Forms
                 const payload = {
                     messageId: msg.key.id,
-                    senderNumber: realNumber,
+                    senderNumber: realNumber, // هنا هيتبعت الرقم الحقيقي الصافي (مثال: 201xxxxxxxxx) 🎯
                     senderName: msg.pushName || 'عميل مزاد إكس',
                     messageBody: messageText,
                     timestamp: msg.messageTimestamp
