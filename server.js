@@ -80,57 +80,53 @@ async function startWhatsApp() {
         if (isWhatsAppConnected) await uploadSession(); 
     });
 
-    sock.ev.on('messages.upsert', async m => {
-        const msg = m.messages[0];
-        if (!msg.key.fromMe && m.type === 'notify') {
-            const isGroup = msg.key.remoteJid.endsWith('@g.us');
-            const messageText = msg.message?.conversation || msg.message?.extendedTextMessage?.text;
+ sock.ev.on('messages.upsert', async ({ messages, type }) => {
+    const msg = messages[0];
 
-            if (!isGroup && messageText) {
-                
-                // 1. استخراج المعرف الأولي (LID)
-                let rawJid = msg.key.remoteJid; 
-                let realNumber = rawJid.split('@')[0];
+    if (!msg || msg.key.fromMe || type !== 'notify') return;
 
-                // 2. 🧠 تفتيش الميتا-داتا والـ vCard للرسالة لاستخراج رقم الموبايل الصريح لأي مستخدم
-                try {
-                    // إذا كان المعرف القادم هو LID (يبدأ بـ 86)
-                    if (realNumber.startsWith('86') || rawJid.includes('@lid')) {
-                        
-                        // الفحص العبقري: البحث عن رقم الموبايل الحقيقي المرتبط بالحساب من الـ Context المباشر للرسالة
-                        if (msg.key.participant) {
-                            realNumber = msg.key.participant.split(':')[0].split('@')[0];
-                        } 
-                        // إذا لم يتوفر، نسحب الرقم من تفاصيل الـ user profile المخزنة في الـ memory للجلسة
-                        else if (sock.vnameCount) {
-                            const contact = await sock.getContact(rawJid);
-                            if (contact && contact.id) {
-                                realNumber = contact.id.split(':')[0].split('@')[0];
-                            }
-                        }
-                    }
-                } catch (err) {
-                    console.error('تنبيه أثناء استخراج رقم الهاتف الحقيقي:', err.message);
-                }
+    console.log('================ MESSAGE =================');
+    console.log(JSON.stringify(msg, null, 2));
 
-                // الـ Payload الحقيقي والموثق برقم الموبايل الصريح للمستخدم (201xxxxxxxx)
-                const payload = {
-                    messageId: msg.key.id,
-                    senderNumber: realNumber, 
-                    senderName: msg.pushName || 'عميل مزاد إكس',
-                    messageBody: messageText,
-                    timestamp: msg.messageTimestamp
-                };
+    console.log('============== IMPORTANT FIELDS ==============');
 
-                try {
-                    await axios.post(MAZADX_WEBHOOK_URL, payload);
-                    console.log(`[مؤمن] تم تمرير الرسالة بنجاح من رقم المحمول الفعلي: ${payload.senderNumber}`);
-                } catch (error) {
-                    console.error('خطأ أثناء تمرير الرسالة لـ الـ Web Forms:', error.message);
-                }
-            }
-        }
+    console.log({
+        remoteJid: msg.key?.remoteJid,
+        participant: msg.key?.participant,
+        id: msg.key?.id,
+        pushName: msg.pushName,
+        messageTimestamp: msg.messageTimestamp,
+
+        conversation: msg.message?.conversation,
+        extendedText: msg.message?.extendedTextMessage?.text,
+
+        contextInfo:
+            msg.message?.extendedTextMessage?.contextInfo ||
+            msg.message?.imageMessage?.contextInfo ||
+            msg.message?.videoMessage?.contextInfo ||
+            msg.message?.documentMessage?.contextInfo ||
+            msg.message?.buttonsResponseMessage?.contextInfo ||
+            msg.message?.listResponseMessage?.contextInfo ||
+            null
     });
-}
+
+    console.log('============== STORE ==============');
+
+    try {
+        console.log(sock.store);
+    } catch (e) {
+        console.log('No store');
+    }
+
+    console.log('============== CONTACTS ==============');
+
+    try {
+        console.log(sock.contacts);
+    } catch (e) {
+        console.log('No contacts');
+    }
+
+    console.log('====================================');
+});
 
 startWhatsApp();
