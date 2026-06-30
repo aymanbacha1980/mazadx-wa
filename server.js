@@ -10,7 +10,7 @@ const STORAGE_URL = 'https://dbbqpjglpqthxvkxhyrh.supabase.co/storage/v1/object/
 const SUPABASE_KEY = 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRiYnFwamdscHF0aHh2a3hoeXJoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI4MDc1MjEsImV4cCI6MjA5ODM4MzUyMX0.9MuIHlYrZ0gTyEUGcoaIU9wupNZbmKtiaA55-_3Jq74';
 
 let isWhatsAppConnected = false; // المتغير الأساسي لتحديد حالة الاتصال بالواتساب
-let isUploading = false;         // قفل الأمان (Mutex Lock) لمنع التكرار وازدحام الطلبات
+let isUploading = false;         // قفل الأمان لمنع التكرار وازدحام الطلبات
 
 // دالة لسحب ملف الجلسة وفك ضغطه عند بداية التشغيل
 async function downloadSession() {
@@ -36,10 +36,9 @@ async function downloadSession() {
 
 // دالة لضغط مجلد الجلسة ورفعه
 async function uploadSession() {
-    // لو مفيش اتصال حقيقي أو فيه عملية رفع شغال دلوقتي، اخرج فوراً
     if (!isWhatsAppConnected || isUploading) return;
     
-    isUploading = true; // اقفل القفل لحماية السيرفر من الـ Concurrency (حالة الـ 400 والـ 504)
+    isUploading = true; 
     try {
         console.log('🔄 جاري حفظ وتحديث الجلسة النشطة في مخزن Supabase...');
         const AdmZip = require('adm-zip');
@@ -51,6 +50,7 @@ async function uploadSession() {
             zip.writeZip('auth_info.zip');
             const fileData = fs.readFileSync('auth_info.zip');
             
+            // استخدام PUT لتجاوز الـ Error 400 تماماً
             await axios.put(STORAGE_URL, fileData, {
                 headers: { 
                     'Authorization': SUPABASE_KEY, 
@@ -64,7 +64,7 @@ async function uploadSession() {
     } catch (err) {
         console.error('❌ فشل في تحديث ملف الجلسة خارجياً:', err.message);
     } finally {
-        isUploading = false; // افتح القفل فور الانتهاء للسماح بالرفع القادم
+        isUploading = false; 
     }
 }
 
@@ -94,14 +94,14 @@ async function startWhatsApp() {
             }
         } else if (connection === 'open') {
             console.log('🔥 خط الدفاع الثاني لمزاد إكس يعمل الآن بأعلى كفاءة وسرعة!');
-            isWhatsAppConnected = true; // تفعيل إذن الرفع الآن فقط بعد استقرار الاتصال
+            isWhatsAppConnected = true; 
             await uploadSession(); 
         }
     });
 
     sock.ev.on('creds.update', async () => {
         await saveCreds();
-        if (isWhatsAppConnected) { // الرفع عند تحديث الـ Tokens فقط لو كنا متصلين فعلياً
+        if (isWhatsAppConnected) { 
             await uploadSession(); 
         }
     });
@@ -132,5 +132,4 @@ async function startWhatsApp() {
     });
 }
 
-// انطلاق خادم الواتساب
 startWhatsApp();
