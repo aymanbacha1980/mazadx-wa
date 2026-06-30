@@ -1,0 +1,19 @@
+{
+  "name": "mazadx-baileys",
+  "version": "1.0.0",
+  "description": "خط الدفاع الثاني لمنصة مزاد إكس",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "@whiskeysockets/baileys": "^7.0.0-rc13",
+    "adm-zip": "^0.5.14",
+    "axios": "^1.18.1",
+    "qrcode-terminal": "^0.12.0"
+  }
+}
