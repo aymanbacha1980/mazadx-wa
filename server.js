@@ -4,14 +4,14 @@ const qrcode = require('qrcode-terminal');
 const fs = require('fs');
 const path = require('path');
 
-// 1. الإعدادات الخاصة بمنصة مزاد إكس والـ Supabase
+// 1. الإعدادات الخاصة بمنصة مزاد إكس والـ Supabase (رابط الـ ngrok الموجه لصفحة الـ aspx الحالية)
 const MAZADX_WEBHOOK_URL = 'https://rug-previous-mullets.ngrok-free.dev/ReceiveWhatsappWebhook.aspx'; 
 const STORAGE_URL = 'https://dbbqpjglpqthxvkxhyrh.supabase.co/storage/v1/object/backups/auth_info.zip';
 const SUPABASE_KEY = 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRiYnFwamdscHF0aHh2a3hoeXJoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI4MDc1MjEsImV4cCI6MjA5ODM4MzUyMX0.9MuIHlYrZ0gTyEUGcoaIU9wupNZbmKtiaA55-_3Jq74';
 
-let isWhatsAppConnected = false; 
-let isUploading = false;         
-let sock; // جعل متغير الـ socket عاماً للوصول إليه من أي مكان
+let isWhatsAppConnected = false; // المتغير الأساسي لتحديد حالة الاتصال بالواتساب
+let isUploading = false;         // قفل الأمان لمنع التكرار وازدحام الطلبات
+let sock;                        // جعل متغير الـ socket عاماً للوصول إليه من حدث الاستقبال
 
 // دالة لسحب ملف الجلسة وفك ضغطه عند بداية التشغيل
 async function downloadSession() {
@@ -51,6 +51,7 @@ async function uploadSession() {
             zip.writeZip('auth_info.zip');
             const fileData = fs.readFileSync('auth_info.zip');
             
+            // استخدام PUT لتجاوز الـ Error 400 تماماً
             await axios.put(STORAGE_URL, fileData, {
                 headers: { 
                     'Authorization': SUPABASE_KEY, 
@@ -72,6 +73,8 @@ async function startWhatsApp() {
     await downloadSession();
 
     const { state, saveCreds } = await useMultiFileAuthState(path.join(__dirname, 'auth_info'));
+    
+    // إسناد الكائن للمتغير العام
     sock = makeWASocket({
         auth: state,
         printQRInTerminal: false 
@@ -113,26 +116,35 @@ async function startWhatsApp() {
             const messageText = msg.message?.conversation || msg.message?.extendedTextMessage?.text;
 
             if (!isGroup && messageText) {
-                // المعرّف الافتراضي القادم من الرسالة
-                let rawJid = msg.key.remoteJid;
+                
+                // 1. استخراج المعرف الافتراضي الأولي
+                let rawJid = msg.key.remoteJid; 
                 let realNumber = rawJid.split('@')[0];
 
+                // 2. الحل الهندسي الحاسم لفصل الـ LID واستخراج الرقم الصريح لأي مستخدم
                 try {
-                    // 🧠 الحل السحري: إذا كان المعرف عبارة عن LID (يبدأ بـ 86 أو طويل)، نطلب من سيرفر الواتساب استخراج الحساب الحقيقي المتصل به
                     if (rawJid.includes('@lid') || realNumber.startsWith('86')) {
-                        const result = await sock.onWhatsApp(rawJid);
-                        if (result && result.length > 0) {
-                            // استخراج رقم الموبايل الفعلي (الـ JID الحقيقي المتصل بالـ LID)
-                            realNumber = result[0].jid.split('@')[0];
+                        // أ) فحص حقل الـ participant المباشر بالرسالة
+                        if (msg.key.participant) {
+                            realNumber = msg.key.participant.split(':')[0].split('@')[0];
+                        } 
+                        // ب) الاستعلام الفوري العكسي من سيرفر الواتساب بالـ LID لمعرفة الـ JID الحقيقي المتصل به
+                        else if (sock) {
+                            const normalizedLid = jidNormalizedUser(rawJid);
+                            const result = await sock.onWhatsApp(normalizedLid);
+                            if (result && result.length > 0 && result[0].exists) {
+                                realNumber = result[0].jid.split('@')[0];
+                            }
                         }
                     }
                 } catch (err) {
-                    console.error('تنبيه أثناء فك معرّف الرقم الحقيقي:', err.message);
+                    console.error('تنبيه أثناء فك التشفير العكسي للرقم:', err.message);
                 }
 
+                // الحفاظ على مسمى senderNumber ليتطابق بالملي مع استقبال صفحة الـ Web Forms
                 const payload = {
                     messageId: msg.key.id,
-                    senderNumber: realNumber, // هنا هيتبعت الرقم الحقيقي الصافي (مثال: 201xxxxxxxxx) 🎯
+                    senderNumber: realNumber, // هنا سيصل رقم الموبايل الحقيقي لأي مستخدم (201xxxxxxxx)
                     senderName: msg.pushName || 'عميل مزاد إكس',
                     messageBody: messageText,
                     timestamp: msg.messageTimestamp
@@ -140,7 +152,7 @@ async function startWhatsApp() {
 
                 try {
                     await axios.post(MAZADX_WEBHOOK_URL, payload);
-                    console.log(`تم تحويل الرسالة بنجاح من الرقم: ${payload.senderNumber}`);
+                    console.log(`[خط الدفاع] تم تحويل الرسالة بنجاح من الرقم الحقيقي: ${payload.senderNumber}`);
                 } catch (error) {
                     console.error('خطأ أثناء تمرير الرسالة لـ الـ Web Forms:', error.message);
                 }
