@@ -6,7 +6,7 @@ const path = require('path');
 
 // 1. الإعدادات الخاصة بمنصة مزاد إكس والـ Supabase
 const MAZADX_WEBHOOK_URL = 'https://mazadx.com/WhatsappWebhook.ashx'; 
-const STORAGE_URL = 'https://dbbqpjglpqthxvkxhyrh.supabase.co/storage/v1/object/authenticated/backups/auth_info.zip';
+const STORAGE_URL = 'https://dbbqpjglpqthxvkxhyrh.supabase.co/storage/v1/object/backups/auth_info.zip';
 const SUPABASE_KEY = 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRiYnFwamdscHF0aHh2a3hoeXJoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI4MDc1MjEsImV4cCI6MjA5ODM4MzUyMX0.9MuIHlYrZ0gTyEUGcoaIU9wupNZbmKtiaA55-_3Jq74';
 
 let isWhatsAppConnected = false; // متغير لمنع الرفع العشوائي قبل الاتصال الحقيقي
