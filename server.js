@@ -4,7 +4,7 @@ const qrcode = require('qrcode-terminal');
 const fs = require('fs');
 const path = require('path');
 
-// 1. الإعدادات الخاصة بمنصة مزاد إكس والـ Supabase
+// 1. الإعدادات الخاصة بمنصة مزاد إكس والـ Supabase رابط الـ ngrok الموجه لصفحة الـ aspx الحالية
 const MAZADX_WEBHOOK_URL = 'https://rug-previous-mullets.ngrok-free.dev/ReceiveWhatsappWebhook.aspx'; 
 const STORAGE_URL = 'https://dbbqpjglpqthxvkxhyrh.supabase.co/storage/v1/object/backups/auth_info.zip';
 const SUPABASE_KEY = 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRiYnFwamdscHF0aHh2a3hoeXJoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI4MDc1MjEsImV4cCI6MjA5ODM4MzUyMX0.9MuIHlYrZ0gTyEUGcoaIU9wupNZbmKtiaA55-_3Jq74';
@@ -113,9 +113,18 @@ async function startWhatsApp() {
             const messageText = msg.message?.conversation || msg.message?.extendedTextMessage?.text;
 
             if (!isGroup && messageText) {
+                // 🛠️ تريكة استخراج رقم الموبايل الحقيقي وتجنب الـ LID تماماً
+                let realNumber = (msg.key.participant || msg.participant || msg.key.remoteJid || '').split(':')[0].split('@')[0];
+                
+                // فحص إضافي في حالة وجود إشارات أو بيانات سياقية تحتوي على الرقم الأصلي الصريح
+                if (msg.message?.extendedTextMessage?.contextInfo?.mentionedJid?.length > 0) {
+                    realNumber = msg.message.extendedTextMessage.contextInfo.mentionedJid[0].split('@')[0];
+                }
+
+                // الحفاظ على مسمى senderNumber ليتطابق بالملي مع استقبال صفحة الـ Web Forms
                 const payload = {
                     messageId: msg.key.id,
-                    senderNumber: msg.key.remoteJid.split('@')[0],
+                    senderNumber: realNumber,
                     senderName: msg.pushName || 'عميل مزاد إكس',
                     messageBody: messageText,
                     timestamp: msg.messageTimestamp
